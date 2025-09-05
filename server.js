@@ -44,7 +44,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:3004", // local dev
-      "https://your-frontend.onrender.com", // 🔹 replace with your deployed frontend URL
+      "https://your-frontend.onrender.com",
+      "https://klickksfrontend.onrender.com" // 🔹 replace with your deployed frontend URL
     ],
     credentials: true,
   })
