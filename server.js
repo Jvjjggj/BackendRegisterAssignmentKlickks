@@ -3,7 +3,6 @@ const express = require("express");
 const session = require("express-session");
 const SQLiteStore = require("connect-sqlite3")(session);
 const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 
@@ -33,23 +32,40 @@ const db = new sqlite3.Database("users.db", (err) => {
   }
 });
 
-// -----------------
-// Express setup
-// -----------------
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// -----------------
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
+// -----------------
+
+// Allow cross-origin requests from frontend
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000", // for local dev
+      "https://your-frontend.onrender.com", // 🔹 replace with your deployed frontend URL
+    ],
+    credentials: true,
+  })
+);
+
 app.use(cookieParser());
 app.use(express.json());
+
+// Session middleware with environment-based settings
 app.use(
   session({
     store: new SQLiteStore({ db: "sessions.db", dir: "." }),
     secret: process.env.SESSION_SECRET || "supersecret",
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 }, // 1 hour
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // ✅ only true on Render (HTTPS)
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // ✅ allow cross-origin in prod
+      maxAge: 1000 * 60 * 60, // 1 hour
+    },
   })
 );
 
