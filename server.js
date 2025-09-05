@@ -43,7 +43,7 @@ const isProd = process.env.NODE_ENV === "production";
 app.use(
   cors({
     origin: [
-      "http://localhost:3000", // local dev
+      "http://localhost:3004", // local dev
       "https://your-frontend.onrender.com", // 🔹 replace with your deployed frontend URL
     ],
     credentials: true,
