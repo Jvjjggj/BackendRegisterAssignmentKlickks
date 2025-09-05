@@ -1,94 +1,50 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
+const session = require("express-session");
+const SQLiteStore = require("connect-sqlite3")(session);
+const path = require("path");
+
+// DB setup
+const Database = require("better-sqlite3");
+const db = new Database("users.db");
+
+// Create users table if not exists
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE,
+    password_hash TEXT
+  )
+`).run();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-// Middlewares
+// Middleware
 app.use(express.json());
-app.use(cookieParser());
 app.use(
-  cors({
-    origin: "http://localhost:3000", // frontend local dev
-    credentials: true,
+  session({
+    store: new SQLiteStore({ db: "sessions.db", dir: "." }),
+    secret: "supersecret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 }, // 1 hour
   })
 );
 
-// Database
-const db = new sqlite3.Database("./users.db", (err) => {
-  if (err) {
-    console.error("Database error:", err.message);
-  } else {
-    console.log("✅ Connected to SQLite database");
-  }
+// Attach db to req for routes
+app.use((req, res, next) => {
+  req.db = db;
+  next();
 });
 
-// Create table
-db.run(
-  "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)"
-);
+// Routes
+const authRoutes = require("./routes/auth");
+app.use("/api/auth", authRoutes);
 
-// Register route
-app.post("/register", async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ message: "Email and password are required" });
-  }
-
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    db.run(
-      "INSERT INTO users (email, password) VALUES (?, ?)",
-      [email, hashedPassword],
-      function (err) {
-        if (err) {
-          if (err.message.includes("UNIQUE constraint failed")) {
-            return res.status(400).json({ message: "Email already exists" });
-          }
-          return res.status(500).json({ message: "Database error", error: err.message });
-        }
-        res.json({ message: "User registered successfully" });
-      }
-    );
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
+app.get("/", (req, res) => {
+  res.send("✅ Backend is running successfully!");
 });
 
-// Login route
-app.post("/login", (req, res) => {
-  const { email, password } = req.body;
-
-  db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
-    if (err) return res.status(500).json({ message: "Database error" });
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
-
-    const token = jwt.sign({ id: user.id }, "secretkey", { expiresIn: "1h" });
-    res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
-    res.json({ message: "Login successful" });
-  });
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port", PORT);
 });
-
-// Dashboard route
-app.get("/dashboard", (req, res) => {
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
-
-  try {
-    const decoded = jwt.verify(token, "secretkey");
-    res.json({ message: `Welcome user ${decoded.id}` });
-  } catch (err) {
-    res.status(401).json({ message: "Invalid token" });
-  }
-});
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

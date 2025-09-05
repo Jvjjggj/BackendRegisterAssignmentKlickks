@@ -1,20 +1,18 @@
 // db.js
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
+const Database = require("better-sqlite3");
 
-const dbPath = path.join(__dirname, "users.db");
-const db = new sqlite3.Database(dbPath);
+// Open (or create) a SQLite database file
+const db = new Database("users.db");
 
-// Create users table if it doesn't exist
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-});
+// Create the users table if it doesn’t exist
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE,
+    password_hash TEXT
+  )
+`).run();
+
+console.log("✅ Connected to SQLite database (better-sqlite3)");
 
 module.exports = db;

@@ -5,9 +5,10 @@ const db = require("../db");
 
 const router = express.Router();
 
+// Normalize email before storing/querying
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
-// POST /api/auth/register
+// ---------------- REGISTER ----------------
 router.post("/register", async (req, res) => {
   const { email, password } = req.body;
   const normEmail = normalizeEmail(email);
@@ -21,67 +22,57 @@ router.post("/register", async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 10);
 
-    db.run(
-      "INSERT INTO users (email, password_hash) VALUES (?, ?)",
-      [normEmail, hash],
-      function (err) {
-        if (err) {
-          if (String(err.message).includes("UNIQUE")) {
-            return res.status(409).json({ error: "Email already registered." });
-          }
-          console.error(err);
-          return res.status(500).json({ error: "Database error." });
-        }
+    db.prepare(
+      "INSERT INTO users (email, password_hash) VALUES (?, ?)"
+    ).run(normEmail, hash);
 
-        // create session
-        req.session.userId = this.lastID;
-        req.session.email = normEmail;
+    // create session
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(normEmail);
+    req.session.userId = user.id;
+    req.session.email = user.email;
 
-        return res.status(201).json({ id: this.lastID, email: normEmail });
-      }
-    );
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: "Server error." });
+    return res.status(201).json({ id: user.id, email: user.email });
+  } catch (err) {
+    if (String(err.message).includes("UNIQUE")) {
+      return res.status(409).json({ error: "Email already registered." });
+    }
+    console.error("Register error:", err);
+    return res.status(500).json({ error: "Database error." });
   }
 });
 
-// POST /api/auth/login
+// ---------------- LOGIN ----------------
 router.post("/login", (req, res) => {
   const { email, password } = req.body;
   const normEmail = normalizeEmail(email);
 
-  if (!normEmail || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+  console.log("Login request:", normEmail);
+
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(normEmail);
+  console.log("User from DB:", user);
+
+  if (!user) {
+    return res.status(400).json({ message: "User not found" });
   }
 
-  db.get(
-    "SELECT id, email, password_hash FROM users WHERE email = ?",
-    [normEmail],
-    async (err, row) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Database error." });
-      }
-      if (!row) {
-        return res.status(401).json({ error: "Invalid credentials." });
-      }
-
-      const ok = await bcrypt.compare(password, row.password_hash);
-      if (!ok) {
-        return res.status(401).json({ error: "Invalid credentials." });
-      }
-
-      // create session
-      req.session.userId = row.id;
-      req.session.email = row.email;
-
-      return res.json({ id: row.id, email: row.email });
+  try {
+    const isMatch = bcrypt.compareSync(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
     }
-  );
+
+    // save session
+    req.session.userId = user.id;
+    req.session.email = user.email;
+
+    res.json({ message: "Login successful", id: user.id, email: user.email });
+  } catch (err) {
+    console.error("Compare error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-// GET /api/auth/me  (session check)
+// ---------------- SESSION CHECK ----------------
 router.get("/me", (req, res) => {
   if (req.session.userId) {
     return res.json({ id: req.session.userId, email: req.session.email });
@@ -89,15 +80,14 @@ router.get("/me", (req, res) => {
   return res.status(401).json({ error: "Not authenticated." });
 });
 
-// POST /api/auth/logout
+// ---------------- LOGOUT ----------------
 router.post("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ error: "Could not log out." });
     }
-    // Clear session cookie
-    res.clearCookie("sid");
+    res.clearCookie("sid"); // clear session cookie
     return res.json({ ok: true });
   });
 });
