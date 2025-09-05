@@ -61,12 +61,13 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isProd, // true only in production (HTTPS on Render)
-      sameSite: isProd ? "none" : "lax", // allow cookies across domains
+      secure: process.env.NODE_ENV === "production", // true on Render (HTTPS)
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // allow cross-origin
       maxAge: 1000 * 60 * 60, // 1 hour
     },
   })
 );
+
 
 // Attach db to req for routes
 app.use((req, res, next) => {
